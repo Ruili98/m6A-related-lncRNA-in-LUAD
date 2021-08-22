@@ -1,0 +1,55 @@
+#install.packages("ggpubr")
+
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("limma")
+
+
+#cite package
+library(limma)
+library(ggpubr)
+clusterFile="cluster.txt"     #Clustering input file
+mutFile="mutCount.txt"        #Mutation data file
+setwd("C:\\Users\\clustermut")      #set dir
+
+#read somatic mutation data
+mut=read.table(mutFile, header=T, sep="\t", check.names=F, row.names=1)
+mut=as.matrix(mut)
+row.names(mut)=gsub("(.*?)\\-(.*?)\\-(.*?)\\-.*", "\\1\\-\\2\\-\\3\\",  row.names(mut))
+mut=avereps(mut)
+
+#read cluster data
+cluster=read.table(clusterFile, header=F, sep="\t", check.names=F, row.names=1)
+cluster=as.matrix(cluster)
+row.names(cluster)=gsub("(.*?)\\-(.*?)\\-(.*?)\\-.*","\\1\\-\\2\\-\\3\\", row.names(cluster))
+
+#merge data
+sameSample=intersect(row.names(mut), row.names(cluster))
+mut=mut[sameSample,]
+mut[mut>quantile(mut,0.975)]=quantile(mut,0.975)
+cluster=cluster[sameSample,]
+data=cbind(as.data.frame(mut), as.data.frame(cluster))
+
+#set comparison cohort
+cohort=levels(factor(data$cluster))
+data$cluster=factor(data$cluster, levels=cohort)
+comp=combn(cohort,2)
+my_comparisons=list()
+for(i 01:ncol(comp)){my_comparisons[[i]]<-comp[,i]}
+
+#draw boxplot
+boxplot=ggboxplot(data, x="cluster", y="mut", color="cluster",
+		          xlab="",
+		          ylab="Somatic mutation count",
+		          legend.title="",
+		          palette = c("blue", "red"),
+		          add = "jitter")+ 
+	    stat_compare_means(comparisons = my_comparisons)
+
+#export the figure 
+pdf(file="boxplot.pdf", width=5, height=4.5)
+print(boxplot)
+dev.off()
+
+
+

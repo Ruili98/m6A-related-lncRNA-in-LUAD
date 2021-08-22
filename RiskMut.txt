@@ -1,0 +1,57 @@
+#install.packages("ggpubr")
+
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("limma")
+
+
+#Cite package
+library(limma)
+library(ggpubr)
+setwd("C:\\Users\\riskMut")      #set dir
+
+riskMut=function(riskFile=null, mutFile=null, boxFile=null){
+	#Read mutation data file
+	mut=read.table(mutFile, header=T, sep="\t", check.names=F, row.names=1)
+	mut=as.matrix(mut)
+	row.names(mut)=gsub("(.*?)\\-(.*?)\\-(.*?)\\-.*","\\1\\-\\2\\-\\3\\",  row.names(mut))
+	mut=avereps(mut)
+	
+	#Read the risk data file
+	risk=read.table(riskFile, header=T, sep="\t", check.names=F, row.names=1)
+	
+	#Merge data
+	sameSample=intersect(row.names(mut), row.names(risk))
+	mut=mut[sameSample,]
+	mut[mut>quantile(mut,0.975)]=quantile(mut,0.975)
+	risk=risk[sameSample,]
+	data=cbind(as.data.frame(mut), as.data.frame(risk))
+	
+	#set comparison group
+	data$risk=ifelse(data$risk=="high", "High-risk", "Low-risk")
+	cohort=levels(factor(data$risk))
+	data$risk=factor(data$risk, levels=c("Low-risk", "High-risk"))
+	comp=combn(cohort,2)
+	my_comparisons=list()
+	for(i in 1:ncol(comp)){my_comparisons[[i]]<-comp[,i]}
+	
+	# Draw boxplot
+	boxplot=ggboxplot(data, x="risk", y="mut", color="risk",
+			          xlab="",
+			          ylab="Somatic mutation count",
+			          legend.title="",
+			          palette = c("blue", "red"),
+			          add = "jitter")+ 
+		    stat_compare_means(comparisons = my_comparisons)
+	
+	#export the figure
+	pdf(file=boxFile, width=5, height=4.5)
+	print(boxplot)
+	dev.off()
+}
+
+riskMut(riskFile="allRisk.txt", mutFile="mutCount.txt", boxFile="all.boxplot.pdf")
+riskMut(riskFile="trainingRisk.txt", mutFile="mutCount.txt", boxFile="training.boxplot.pdf")
+riskMut(riskFile="testingRisk.txt", mutFile="mutCount.txt", boxFile="testing.boxplot.pdf")
+
+

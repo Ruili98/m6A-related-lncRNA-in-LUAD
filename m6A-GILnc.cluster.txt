@@ -1,0 +1,78 @@
+#install.packages('sparcl')
+#install.packages('pheatmap')
+
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("limma")
+
+
+#Cite package
+library(limma)
+library(sparcl)
+library(pheatmap)
+expFile="lncRNA.txt"        #Expression input file
+geneFile="diff.txt"         #Difference lncRNA file
+mutFile="mutCount.txt"      #Mutation data file
+setwd("C:\\Users\\cluster")      #Set dir
+
+#Read input files and sort them
+rt=read.table(expFile, header=T, sep="\t", check.names=F)
+rt=as.matrix(rt)
+rownames(rt)=rt[,1]
+exp=rt[,2:ncol(rt)]
+dimnames=list(rownames(exp),colnames(exp))
+data=matrix(as.numeric(as.matrix(exp)),nrow=nrow(exp),dimnames=dimnames)
+data=avereps(data)
+data=data[rowMeans(data)>0,]
+
+#Delete normal samples
+group=sapply(strsplit(colnames(data),"\\-"),"[",4)
+group=sapply(strsplit(group,""),"[",1)
+group=gsub("2","1",group)
+data=data[,group==0]
+
+#Read difference lncRNA file
+gene=read.table(geneFile, header=T, sep="\t", check.names=F)
+data=data[as.vector(gene[,1]),]
+data=log2(data+0.01)
+data=scale(data)
+
+#Clustering
+hc=hclust(dist(t(data)))
+group=cutree(hc, k=2)
+mut=read.table(mutFile, header=T, sep="\t", check.names=F, row.names=1)
+mut=as.matrix(mut)
+row.names(mut)=gsub("(.*?)\\-(.*?)\\-(.*?)\\-.*","\\1\\-\\2\\-\\3\\",  row.names(mut))
+mut=avereps(mut)
+Type=as.matrix(group)
+row.names(Type)=gsub("(.*?)\\-(.*?)\\-(.*?)\\-.*","\\1\\-\\2\\-\\3\\", row.names(Type))
+Type=avereps(Type)
+sameSample=intersect(row.names(mut), row.names(Type))
+mut=mut[sameSample,]
+Type=Type[sameSample,]
+meda=median(mut[Type==a])
+medb=median(mut[Type==b])
+if(meda>medb){
+	group=ifelse(group==a, "GU-like", "GS-like")
+}else{
+	group=ifelse(group==a, "GS-like", "GU-like")
+}
+
+#Output cluster table
+write.table(group, file="cluster.txt", sep="\t", quote=F, col.names=F)
+
+#Draw a heat map
+pdf(file="cluster.pdf", width=9, height=7)
+annotation=data.frame(Cluster=group)
+pheatmap(data,
+         annotation=annotation,
+         cluster_cols=hc,
+         color = colorRampPalette(c("blue", "white", "red"))(50),
+         show_colnames=F,
+         show_rownames=F,
+         fontsize=8)
+dev.off()
+
+
+
+

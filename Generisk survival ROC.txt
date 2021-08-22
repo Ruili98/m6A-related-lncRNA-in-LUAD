@@ -1,0 +1,63 @@
+#install.packages("survival")
+#install.packages("survminer")
+#install.packages("timeROC")
+
+#Cite package
+library(survival)
+library(survminer)
+library(timeROC)
+
+inputFile="geneRisk.txt"        #Input file
+survFile="survival.pdf"         #Survival curve file
+rocFile="ROC.pdf"               #ROC curve file
+setwd("C:\\Users\\ROC")      #set dir
+
+
+#Read input file
+rt=read.table(inputFile,header=T,sep="\t")
+
+#Compare the survival difference between the high and low risk groups, and get a significant p value
+diff=survdiff(Surv(futime, fustat) ~risk,data = rt)
+pValue=1-pchisq(diff$chisq,df=1)
+fit <- survfit(Surv(futime, fustat) ~ risk, data = rt)
+if(pValue<0.001){
+	pValue="p<0.001"
+}else{
+	pValue=paste0("p=",sprintf("%.03f",pValue))
+}
+#Draw a survival curve
+surPlot=ggsurvplot(fit, 
+		           data=rt,
+		           conf.int=T,
+		           pval=pValue,
+		           pval.size=5,
+		           risk.table=TRUE,
+		           legend.labs=c("High risk", "Low risk"),
+		           legend.title="Risk",
+		           xlab="Time(years)",
+		           break.time.by = 1,
+		           risk.table.title="",
+		           palette=c("red", "blue"),
+		           risk.table.height=.25)
+pdf(file=survFile,onefile = FALSE,width = 6.5,height =5.5)
+print(surPlot)
+dev.off()
+
+
+###ROC curve
+ROC_rt=timeROC(T=rt$futime,delta=rt$fustat,
+               marker=rt$riskScore,cause=1,
+               weighting='aalen',
+               times=c(1,3,5),ROC=TRUE)
+pdf(file=rocFile,width=5,height=5)
+plot(ROC_rt,time=1,col='green',title=FALSE,lwd=2)
+plot(ROC_rt,time=3,col='blue',add=TRUE,title=FALSE,lwd=2)
+plot(ROC_rt,time=5,col='red',add=TRUE,title=FALSE,lwd=2)
+legend('bottomright',
+        c(paste0('AUC at 1 years: ',round(ROC_rt$AUC[1],3)),
+          paste0('AUC at 3 years: ',round(ROC_rt$AUC[2],3)),
+          paste0('AUC at 5 years: ',round(ROC_rt$AUC[3],3))),
+        col=c("green",'blue','red'),lwd=2,bty = 'n')
+dev.off()
+
+

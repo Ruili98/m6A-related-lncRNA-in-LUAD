@@ -1,0 +1,104 @@
+#install.packages("pheatmap")
+
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("limma")
+
+
+#Cite package
+library(limma)
+library(pheatmap)
+expFile="symbol.txt"        #expression data file
+mutFile="mutCount.txt"      #mutation data file
+gene="METTL14"               #gene name
+setwd("C:\\Users\\riskPlot")      #set dir
+
+#Read expression data file
+rt=read.table(expFile, header=T, sep="\t", check.names=F)
+rt=as.matrix(rt)
+rownames(rt)=rt[,1]
+exp=rt[,2:ncol(rt)]
+dimnames=list(rownames(exp),colnames(exp))
+data=matrix(as.numeric(as.matrix(exp)),nrow=nrow(exp),dimnames=dimnames)
+data=avereps(data)
+data=data[rowMeans(data)>0,]
+
+#Delete normal samples
+cohort=sapply(strsplit(colnames(data),"\\-"),"[",4)
+cohort=sapply(strsplit(cohort,""),"[",1)
+cohort=gsub("2", "1", cohort)
+data=data[,cohort==0]
+
+#Extract target gene expression
+data=rbind(data, gene=data[gene,])
+exp=t(data[c("gene",gene),])
+row.names(exp)=gsub("(.*?)\\-(.*?)\\-(.*?)\\-.*", "\\1\\-\\2\\-\\3\\",  row.names(exp))
+exp=avereps(exp)
+
+#Read mutation data file
+mut=read.table(mutFile, header=T, sep="\t", check.names=F, row.names=1)
+mut=as.matrix(mut)
+row.names(mut)=gsub("(.*?)\\-(.*?)\\-(.*?)\\-.*","\\1\\-\\2\\-\\3\\",  row.names(mut))
+mut=avereps(mut)
+
+#Merging expression data and mutation data
+sameSample=intersect(row.names(exp), row.names(mut))
+expMut=cbind(exp[sameSample,], mut=mut[sameSample,])
+
+bioRiskPlot=function(riskFile=null, heatmapFile=null, mutPicFile=null, expPicFile=null){
+	rt=read.table(riskFile,header=T,sep="\t",row.names=1,check.names=F)   #Read input file
+	riskSameSample=intersect(row.names(expMut), row.names(rt))
+	rt=cbind(rt[riskSameSample,], expMut[riskSameSample,])
+	rt=rt[order(rt$riskScore),]       #Sort samples according to riskScore
+
+	#Draw a risk heat map
+	rt1=log2(rt[c(3:(ncol(rt)-5))]+0.01)
+	rt1=t(rt1)
+	annotation=data.frame(type=rt[,"risk"])
+	rownames(annotation)=rownames(rt)
+	pdf(file=heatmapFile,width = 8,height = 4)
+	pheatmap(rt1, 
+		     annotation=annotation, 
+		     cluster_cols = FALSE,
+		     fontsize_row=8,
+		     show_colnames = F,
+		     fontsize_col=3,
+		     fontsize=7,
+		     scale="row",
+		     color = colorRampPalette(c("blue", "white", "red"))(50) )
+	dev.off()
+		
+	#Draw a sudden change graph
+	riskClass=rt[,"risk"]
+	lowLength=length(riskClass[riskClass=="low"])
+	highLength=length(riskClass[riskClass=="high"])
+	lowMax=max(rt$riskScore[riskClass=="low"])
+	mut=rt[,"mut"]
+	mut[mut>quantile(mut,0.975)]=quantile(mut,0.975)
+	pdf(file=mutPicFile,width = 7,height = 4)
+	plot(mut, type="p", pch=19,
+		 xlab="", ylab="Somatic mutation count",
+		 col=c(rep("blue",lowLength),rep("red",highLength)) )
+	abline(v=lowLength,lty=2)
+	dev.off()
+		
+	#Gene expression map
+	exp=rt[,"gene"]
+	exp[exp>quantile(exp,0.975)]=quantile(exp,0.975)
+	pdf(file=expPicFile,width = 7,height = 4)
+	plot(exp, type="h", pch=19,
+		 xlab="Patients (increasing risk socre)", ylab=paste0(gene, " expression"),
+		 col=c(rep("blue",lowLength),rep("red",highLength)) )
+	abline(v=lowLength,lty=2)
+	dev.off()
+
+}
+#tarining cohort risk curve
+bioRiskPlot(riskFile="trainingRisk.txt", heatmapFile="training.heatmap.pdf", mutPicFile="training.mut.pdf", expPicFile="training.exp.pdf")
+#Risk curve of testing cohort
+bioRiskPlot(riskFile="testingRisk.txt", heatmapFile="testing.heatmap.pdf", mutPicFile="testing.mut.pdf", expPicFile="testing.exp.pdf")
+#Risk curve for all samples
+bioRiskPlot(riskFile="allRisk.txt", heatmapFile="all.heatmap.pdf", mutPicFile="all.mut.pdf", expPicFile="all.exp.pdf")
+
+
+

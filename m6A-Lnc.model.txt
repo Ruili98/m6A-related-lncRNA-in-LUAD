@@ -1,0 +1,160 @@
+#install.packages("survival")
+#install.packages("caret")
+#install.packages("glmnet")
+#install.packages("survminer")
+#install.packages("timeROC")
+
+
+#cite package
+library(survival)
+library(caret)
+library(glmnet)
+library(survminer)
+library(timeROC)
+coxPfilter=0.05        #Cox method significance filter criteria
+setwd("D:\\m6A related lncRNA+SNP+ GIlncRNA\\model")      #set dir
+rt=read.table("expTime.txt",header=T,sep="\t",check.names=F,row.names=1)     #Read input file
+rt$futime=rt$futime/365
+
+############Define the forest plot function############
+bioForest=function(coxFile=null,forestFile=null,forestCol=null){
+	#Read input file
+	rt <- read.table(coxFile,header=T,sep="\t",row.names=1,check.names=F)
+	gene <- rownames(rt)
+	hr <- sprintf("%.3f",rt$"HR")
+	hrLow  <- sprintf("%.3f",rt$"HR.95L")
+	hrHigh <- sprintf("%.3f",rt$"HR.95H")
+	Hazard.ratio <- paste0(hr,"(",hrLow,"-",hrHigh,")")
+	pVal <- ifelse(rt$pvalue<0.001, "<0.001", sprintf("%.3f", rt$pvalue))
+		
+	#Output graphics
+	pdf(file=forestFile, width = 7, height = 4.5)
+	n <- nrow(rt)
+	nRow <- n+1
+	ylim <- c(1,nRow)
+	layout(matrix(c(1,2),nc=2),width=c(3,2.5))
+		
+	#Draw the clinical information on the left side of the forest diagram
+	xlim = c(0,3)
+	par(mar=c(4,2.5,2,1))
+	plot(1,xlim=xlim,ylim=ylim,type="n",axes=F,xlab="",ylab="")
+	text.cex=0.5
+	text(0,n:1,gene,adj=0,cex=text.cex)
+	text(1.5-0.5*0.2,n:1,pVal,adj=1,cex=text.cex);text(1.5-0.5*0.2,n+1,'pvalue',cex=text.cex,adj=1)
+	text(3,n:1,Hazard.ratio,adj=1,cex=text.cex);text(3,n+1,'Hazard ratio',cex=text.cex,adj=1,)
+		
+	#Draw a forest map
+	par(mar=c(4,1,2,1),mgp=c(2,0.5,0))
+	xlim = c(0,max(as.numeric(hrLow),as.numeric(hrHigh)))    
+	plot(1,xlim=xlim,ylim=ylim,type="n",axes=F,ylab="",xaxs="i",xlab="Hazard ratio")
+	arrows(as.numeric(hrLow),n:1,as.numeric(hrHigh),n:1,angle=90,code=3,length=0.05,col="darkblue",lwd=2.5)
+	abline(v=1,col="black",lty=2,lwd=2)
+	boxcolor = ifelse(as.numeric(hr) > 1, forestCol[1], forestCol[2])
+	points(as.numeric(hr), n:1, pch = 15, col = boxcolor, cex=1.3)
+	axis(1)
+	dev.off()
+}
+############Plotting the forest map function############
+	#############Group the data#############
+	inTraining<-createDataPartition(y=rt[,3], p=0.7, list=F)
+	training<-rt[inTraining,]
+	testing<-rt[-inTraining,]
+	trainingOut=cbind(id=row.names(training),training)
+	testingOut=cbind(id=row.names(testing),testing)
+	
+	#univariate cox analysis
+	outUniTab=data.frame()
+	sigGenes=c("futime","fustat")
+	for(i in colnames(training[,3:ncol(training)])){
+		#cox analysis
+		cox <- coxph(Surv(futime, fustat) ~ training[,i], data = training)
+		coxSummary = summary(cox)
+		coxP=coxSummary$coefficients[,"Pr(>|z|)"]
+		#KM analysis
+		#group=ifelse(training[,i]>median(training[,i]),"high","low")
+		#diff=survdiff(Surv(futime, fustat) ~group,data = training)
+		#pValue=1-pchisq(diff$chisq,df=1)
+		
+		#Retain significant genes
+		if(coxP<coxPfilter){
+		    sigGenes=c(sigGenes,i)
+			outUniTab=rbind(outUniTab,
+				         cbind(id=i,
+				         HR=coxSummary$conf.int[,"exp(coef)"],
+				         HR.95L=coxSummary$conf.int[,"lower .95"],
+				         HR.95H=coxSummary$conf.int[,"upper .95"],
+				         pvalue=coxSummary$coefficients[,"Pr(>|z|)"])
+				         )
+		}
+	}
+	uniSigExp=training[,sigGenes]
+	uniSigExpOut=cbind(id=row.names(uniSigExp),uniSigExp)
+	
+	#############Build the COX model#############
+	multiCox <- coxph(Surv(futime, fustat) ~ ., data = uniSigExp)
+	multiCox=step(multiCox,direction = "both")
+	multiCoxSum=summary(multiCox)
+	
+	#Output model related information
+	outMultiTab=data.frame()
+	outMultiTab=cbind(
+		               coef=multiCoxSum$coefficients[,"coef"],
+		               HR=multiCoxSum$conf.int[,"exp(coef)"],
+		               HR.95L=multiCoxSum$conf.int[,"lower .95"],
+		               HR.95H=multiCoxSum$conf.int[,"upper .95"],
+		               pvalue=multiCoxSum$coefficients[,"Pr(>|z|)"])
+	outMultiTab=cbind(id=row.names(outMultiTab),outMultiTab)
+	
+	#Output training group risk file
+	riskScore=predict(multiCox,type="risk",newdata=train)          #Use training to get the model to predict the risk of training samples
+	coxGene=rownames(multiCoxSum$coefficients)
+	coxGene=gsub("`","",coxGene)
+	outCol=c("futime","fustat",coxGene)
+	medianTrainingRisk=median(riskScore)
+	risk=as.vector(ifelse(riskScore>medianTrainingRisk,"high","low"))
+	trainingRiskOut=cbind(id=rownames(cbind(training[,outCol],riskScore,risk)),cbind(training[,outCol],riskScore,risk))
+		
+	#Output testing group risk file
+	riskScoreTesting=predict(multiCox,type="risk",newdata=test)        #Use training to get the model to predict the risk of testing samples
+	riskTesting=as.vector(ifelse(riskScoreTesting>medianTrainingRisk,"high","low"))
+	testingRiskOut=cbind(id=rownames(cbind(testing[,outCol],riskScoreTesting,riskTesting)),cbind(testing[,outCol],riskScore=riskScoreTesting,risk=riskTesting))
+	
+	#Survival difference p value	
+	diff=survdiff(Surv(futime, fustat) ~risk,data = training)
+	pValue=1-pchisq(diff$chisq, df=1)
+	diffTesting=survdiff(Surv(futime, fustat) ~riskTesting,data = testing)
+	pValueTesting=1-pchisq(diffTesting$chisq, df=1)
+
+
+	#Area under ROC curve
+	predictTime=1    #Forecast time
+	roc=timeROC(T=training$futime, delta=training$fustat,
+	            marker=riskScore, cause=1,
+	            weighting='aalen',
+	            times=c(predictTime), ROC=TRUE)
+	rocTesting=timeROC(T=testing$futime, delta=testing$fustat,
+	            marker=riskScoreTesting, cause=1,
+	            weighting='aalen',
+	            times=c(predictTime), ROC=TRUE)	
+	
+	if((pValue<0.01) & (roc$AUC[2]>0.68) & (pValueTest<0.05) & (rocTest$AUC[2]>0.63)){
+		#Output grouping results
+		write.table(trainingOut,file="training.data.txt",sep="\t",quote=F,row.names=F)
+		write.table(testingOut,file="testing.data.txt",sep="\t",quote=F,row.names=F)
+		#Output single factor results
+		write.table(outUniTab,file="trainingUniCox.txt",sep="\t",row.names=F,quote=F)
+		write.table(uniSigExpOut,file="tcgaUniSigExp.txt",sep="\t",row.names=F,quote=F)
+		bioForest(coxFile="trainingUniCox.txt",forestFile="trainingUniCox.pdf",forestCol=c("red","green"))
+	    #Output multi-factor results
+		write.table(outMultiTab,file="multiCox.txt",sep="\t",row.names=F,quote=F)
+		write.table(testingRiskOut,file="testingRisk.txt",sep="\t",quote=F,row.names=F)
+		write.table(trainingRiskOut,file="trainingRisk.txt",sep="\t",quote=F,row.names=F)
+		#all risk
+		allRiskOut=rbind(trainingRiskOut, testingRiskOut)
+		write.table(allRiskOut,file="allRisk.txt",sep="\t",quote=F,row.names=F)
+		break
+	}
+}
+
+
+

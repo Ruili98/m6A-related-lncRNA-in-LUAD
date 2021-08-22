@@ -1,0 +1,92 @@
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("limma")
+
+#install.packages("pheatmap")
+
+
+#Cite package
+library(limma)
+library(pheatmap)
+fdrFilter=0.01        #fdr critical value
+logFCfilter=1         #logFC critical value
+conNum=139             #Low mutation group (GS) sample number
+treatNum=134           #High mutation group (GS) sample number
+inputFile="lncRNA.mutGroup.txt"      #input file
+setwd("D:\\m6A GIlncRNA\\12DIFF\\1,0.05new")      #set dir
+
+#Read input file
+outTab=data.frame()
+grade=c(rep(1,conNum),rep(2,treatNum))
+rt=read.table(inputFile, header=T, sep="\t", check.names=F)
+rt=as.matrix(rt)
+rownames(rt)=rt[,1]
+exp=rt[,2:ncol(rt)]
+dimnames=list(rownames(exp),colnames(exp))
+data=matrix(as.numeric(as.matrix(exp)),nrow=nrow(exp),dimnames=dimnames)
+data=avereps(data)
+data=data[rowMeans(data)>0.4,]
+
+#Difference analysis
+for(i in row.names(data)){
+	  lncName=unlist(strsplit(i,"\\|",))[1]
+	  lncName=gsub("\\/", "_", lncName)
+	  rt=rbind(expression=data[i,],grade=grade)
+	  rt=as.matrix(t(rt))
+	  wilcoxTest=wilcox.test(expression ~ grade, data=rt)
+	  conLncMeans=mean(data[i,1:conNum])
+	  treatLncMeans=mean(data[i,(conNum+1):ncol(data)])
+	  logFC=log2(treatLncMeans)-log2(conLncMeans)  
+	  pvalue=wilcoxTest$p.value
+	  conMed=median(data[i,1:conNum])
+	  treatMed=median(data[i,(conNum+1):ncol(data)])
+	  diffMed=treatMed-conMed
+	  if( ((logFC>0) & (diffMed>0)) | ((logFC<0) & (diffMed<0)) ){  
+			outTab=rbind(outTab,cbind(lnc=i,conMean=conLncMeans,treatMean=treatLncMeans,logFC=logFC,pValue=pvalue))
+	  }
+}
+pValue=outTab[,"pValue"]
+fdr=p.adjust(as.numeric(as.vector(pValue)), method="fdr")
+outTab=cbind(outTab,fdr=fdr)
+
+#Output the differences of all lncRNAs
+write.table(outTab,file="all.xls",sep="\t",row.names=F,quote=F)
+
+#Output difference table
+outDiff=outTab[( abs(as.numeric(as.vector(outTab$logFC)))>logFCfilter & as.numeric(as.vector(outTab$fdr))<fdrFilter),]
+write.table(outDiff,file="diff.xls",sep="\t",row.names=F,quote=F)
+write.table(outDiff,file="diff.txt",sep="\t",row.names=F,quote=F)
+
+#Output differential lncRNA expression files
+heatmap=rbind(ID=colnames(data[as.vector(outDiff[,1]),]),data[as.vector(outDiff[,1]),])
+write.table(heatmap,file="diffLncExp.txt",sep="\t",col.names=F,quote=F)
+
+#Draw differential lncRNA heat map
+lncNum=20
+diffSig=outDiff[order(as.numeric(as.vector(outDiff$logFC))),]
+diffLncName=as.vector(diffSig[,1])
+diffLength=length(diffLncName)
+hmLnc=c()
+if(diffLength>(lncNum*2) ){
+    hmLnc=diffLncName[c(1:lncNum,(diffLength-lncNum+1):diffLength)]
+}else{
+    hmLnc=diffLncName
+}
+hmExp=data[hmLnc,]
+hmExp=log2(hmExp+0.01)
+Type=c(rep("GS",conNum),rep("GU",treatNum))
+names(Type)=colnames(data)
+Type=as.data.frame(Type)
+pdf(file="heatmap.pdf",height=5,width=7)
+pheatmap(hmExp, 
+         annotation=Type, 
+         color = colorRampPalette(c("blue", "white", "red"))(50),
+         cluster_cols =F,
+         show_colnames = F,
+         scale="row",
+         fontsize = 8,
+         fontsize_row=6,
+         fontsize_col=8)
+dev.off()
+
+

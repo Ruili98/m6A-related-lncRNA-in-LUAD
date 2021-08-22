@@ -1,0 +1,71 @@
+#install.packages("survival")
+#install.packages("survminer")
+
+
+#Cite package
+library(survival)
+library(survminer)
+setwd("D:\\m6A related lncRNA+SNP+ GIlncRNA\\model\\cligrouprisk")                 #set dir
+risk=read.table("allRisk.txt",header=T,sep="\t",check.names=F,row.names=1)      #read  risk file
+cli=read.table("clinical.txt",sep="\t",check.names=F,header=T,row.names=1)      #read clinical file
+sameSample=intersect(row.names(cli),row.names(risk))
+risk=risk[sameSample,]
+cli=cli[sameSample,]
+data=cbind(futime=risk[,1],fustat=risk[,2],cli,risk=risk[,"risk"])
+
+#Circulate clinical information
+for(i in colnames(data[,3:(ncol(data)-1)])){
+    rt=data[,c("futime","fustat",i,"risk")]
+    rt=rt[(rt[,i]!="unknow"),]
+    colnames(rt)=c("futime","fustat","clinical","risk")
+	tab=table(rt[,"clinical"])
+	tab=tab[tab!=0]
+	#Cycle through the categories in each clinical information
+	for(j in names(tab)){
+		rt1=rt[(rt[,"clinical"]==j),]
+		tab1=table(rt1[,"risk"])
+		tab1=tab1[tab1!=0]
+		labels=names(tab1)
+		if(length(labels)==2){
+			titleName=j
+			if((i=="age") | (i=="Age") | (i=="AGE")){
+				titleName=paste0("age",j)
+			}
+			diff=survdiff(Surv(futime, fustat) ~risk,data = rt1)
+			pValue=1-pchisq(diff$chisq,df=1)
+			if(pValue<0.001){
+				pValue="p<0.001"
+			}else{
+				pValue=paste0("p=",sprintf("%.03f",pValue))
+			}
+			fit <- survfit(Surv(futime, fustat) ~ risk, data = rt1)
+			#draw survival curve
+			surPlot=ggsurvplot(fit, 
+			           data=rt1,
+			           conf.int=F,
+			           pval=pValue,
+			           pval.size=6,
+			           title=paste0("Patients with ",titleName),
+			           legend.title="Risk",
+			           legend.labs=labels,
+			           font.legend=12,
+			           xlab="Time(years)",
+			           break.time.by = 1,
+			           palette=c("red", "blue"),
+			           risk.table=TRUE,
+			       	   risk.table.title="",
+			           risk.table.col = "strata",
+			           risk.table.height=.25)
+		    #export the figure
+		    j=gsub(">=","ge",j);j=gsub("<=","le",j);j=gsub(">","gt",j);j=gsub("<","lt",j)
+			pdf(file=paste0("survival.",i,"_",j,".pdf"),onefile = FALSE,
+			       width = 6,        #The width of the picture
+			       height =5)        #The height of the picture
+			print(surPlot)
+			dev.off()
+		}
+	}
+}
+
+
+

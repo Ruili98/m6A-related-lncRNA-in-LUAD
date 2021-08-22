@@ -1,0 +1,63 @@
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("limma")
+
+library(limma)
+setwd("D:\\m6A GIlncRNA\\M6a lncRNA cor")          #set dir
+
+corFilter=0.4              #Correlation coefficient filter standard
+pvalueFilter=0.001         #p-value filter criteria
+#Read lncRNA expression files and process the data
+rt = read.table("lncRNA.txt",header=T,sep="\t",check.names=F)
+rt=as.matrix(rt)
+rownames(rt)=rt[,1]
+exp=rt[,2:ncol(rt)]
+dimnames=list(rownames(exp),colnames(exp))
+lncRNA=matrix(as.numeric(as.matrix(exp)),nrow=nrow(exp),dimnames=dimnames)
+lncRNA=avereps(lncRNA)
+lncRNA=lncRNA[rowMeans(lncRNA)>0.5,]
+cohort=sapply(strsplit(colnames(lncRNA),"\\-"),"[",4)
+cohort=sapply(strsplit(cohort,""),"[",1)
+cohort=gsub("2","1",cohort)
+lncRNA=lncRNA[,cohort==0]
+
+#Read M6A gene expression files and process the data
+rt = read.table("m6AGeneExp.txt",header=T,sep="\t",check.names=F)
+rt=as.matrix(rt)
+rownames(rt)=rt[,1]
+exp=rt[,2:ncol(rt)]
+dimnames=list(rownames(exp),colnames(exp))
+M6AGene=matrix(as.numeric(as.matrix(exp)),nrow=nrow(exp),dimnames=dimnames)
+M6AGene=avereps(M6AGene=M6AGene[rowMeans(M6AGene)>0.5,]
+cohort=sapply(strsplit(colnames(M6AGene),"\\-"),"[",4)
+cohort=sapply(strsplit(cohort,""),"[",1)
+cohort=gsub("2","1",cohort)
+M6AGene=M6AGene[,cohort==0]
+
+#Correlation test
+outTab=data.frame()
+for(i in row.names(lncRNA)){
+	  if(sd(lncRNA[i,])>0.5){
+			  for(j in row.names(M6AGene)){
+				     x=as.numeric(lncRNA[i,])
+				     y=as.numeric(M6AGene[j,])
+				     corT=cor.test(x,y)
+				     cor=corT$estimate
+				     pvalue=corT$p.value
+				     if((cor>corFilter) & (pvalue<pvalueFilter)){
+				         outTab=rbind(outTab,cbind(M6AGene=j,lncRNA=i,cor,pvalue,Regulation="postive"))
+				     }
+				     if((cor< -corFilter) & (pvalue<pvalueFilter)){
+				         outTab=rbind(outTab,cbind(M6AGene=j,lncRNA=i,cor,pvalue,Regulation="negative"))
+				     }
+			  }
+		}
+}
+write.table(file="corResult.txt",outTab,sep="\t",quote=F,row.names=F)        
+M6ALncRNA=unique(outTab[,"lncRNA"])
+M6ALncRNAexp=lncRNA[M6ALncRNA,]
+M6ALncRNAexp=rbind(ID=colnames(M6ALncRNAexp),M6ALncRNAexp)
+write.table(M6ALncRNAexp,file="M6ALncRNAexp.txt",sep="\t",quote=F,col.names=F)
+
+
+
