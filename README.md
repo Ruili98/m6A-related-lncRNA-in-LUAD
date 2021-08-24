@@ -1,5 +1,5 @@
 # m6A-related-lncRNA-in-LUAD
-Correlation analysis.txt, GILnc.diff.txt, and m6A-GILnc.cluster.txt for Figure 2a,2b,2c
+M6ALncRNA.cor.txt, Correlation analysis.txt, GILnc.diff.txt, and m6A-GILnc.cluster.txt for Figure 2a,2b,2c
 
 m6A-GILnc.clusterGene.txt for Figure 3
 
