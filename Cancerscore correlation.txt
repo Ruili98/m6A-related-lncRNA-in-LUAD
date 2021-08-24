@@ -1,0 +1,82 @@
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("limma")
+
+#install.packages("ggplot2")
+#install.packages("ggpubr")
+
+
+#Cite package
+library(reshape2)
+library(ggplot2)
+library(ggpubr)
+library(limma)
+
+cancerType="LUAD"                    #Abbreviation of tumor to be analyzed
+expFile="LUAD.txt"             #Express input file
+tmeFile="estimateScores.txt"         #Tumor Microenvironment Results File
+RNAssFile="StemnessScores_RNAexp_20170127.2.tsv"      #RNAss file
+DNAssFile="StemnessScores_DNAmeth_20170210.tsv"       #DNAss file
+setwd("D:\\Users\\LUAD tumor microenvironment")     #set dir
+
+#Read expression file
+exp=read.table(expFile, header=T,sep="\t",row.names=1,check.names=F)
+exp=exp[(exp[,"Type"]=="Tumor"),]
+exp=exp[(exp[,"CancerType"]==cancerType),]
+exp=as.matrix(exp[,1:(ncol(exp)-2)])
+row.names(exp)=gsub(".$","",row.names(exp))
+exp=avereps(exp)
+
+
+#Read tumor microenvironment files
+TME=read.table(tmeFile, header=T,sep="\t",row.names=1,check.names=F)
+TME=as.matrix(TME[,1:3])
+row.names(TME)=gsub(".$","",row.names(TME))
+TME=avereps(TME)
+
+#Read RNAss file
+RNAss=read.table(RNAssFile, header=T,sep="\t",row.names=1,check.names=F)
+RNAss=t(RNAss[1:2,])
+
+#Read DNAss file
+DNAss=read.table(DNAssFile, header=T,sep="\t",row.names=1,check.names=F)
+DNAss=t(DNAss[1:2,])
+
+#Sample intersection
+sameSample=Reduce(intersect,list(row.names(TME),row.names(exp),row.names(DNAss),row.names(RNAss)))
+exp=exp[sameSample,]
+TME=TME[sameSample,]
+RNAss=RNAss[sameSample,]
+DNAss=DNAss[sameSample,]
+data=cbind(RNAss,DNAss,TME,exp)
+data=as.data.frame(data[,c(-2,-4)])
+
+#Get score data and expression data respectively
+scoreData=data[,1:5]
+expData=data[,6:ncol(data)]
+scoreData=cbind(ID=row.names(scoreData),scoreData)
+expData=cbind(ID=row.names(expData),expData)
+
+#Convert expressed data to ggplot2 input data
+expMelt = melt(expData,id="ID")
+colnames(expMelt) = c('ID','gene','exp') 
+
+#Convert score data to ggplot2 input data
+scoreMelt = melt(scoreData,id="ID")
+colnames(scoreMelt) = c('ID','TME','score')
+
+#Combine score data and expression data
+mergedata = merge(expMelt,scoreMelt,by="ID")
+
+#Draw correlation graphs
+tiff(file="COR.tiff",width = 40,height = 15,units ="cm",compression="lzw",bg="white",res=300)
+ggplot(data = mergedata, aes(x = exp, y = score))+
+	facet_grid(TME~gene,scales = "free")+geom_point(size=0.5)+
+	stat_smooth(method="lm",se=FALSE,formula=y~x)+
+	labs(x="Gene expression",y="")+
+	ggtitle(paste0("Cancer: ",cancerType))+theme(title=element_text(size=10))+
+	theme(axis.ticks = element_blank(), axis.text.y = element_blank(),axis.text.x = element_blank())+
+	stat_cor(method = 'spearman', aes(x =exp, y =score),label.sep = ",",cex=1.8)
+dev.off()
+
+

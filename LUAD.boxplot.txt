@@ -1,0 +1,15 @@
+inputFile="panGeneExp.txt"    #input file
+setwd("C:\\Users\\LUAD.boxplot")              #set dir
+rt=read.table(inputFile,sep="\t",header=T,check.names=F,row.names=1)    #read the input file
+rt=rt[(rt[,"Type"]=="Tumor"),]     #delete normal samples
+data=rt[,(1:(ncol(rt)-2))]         #Keep columns representing gene expression
+geneNum=ncol(data)                 #the number of genes
+
+#Draw boxplot graphics
+pdf(file="boxplot.pdf",width=6,height=5)    #Output file
+par(mar=c(5, 5, 2, 2))                      #Set picture margins (bottom, left, top, right)
+boxplot(data,ylab ="Gene expression",col = rainbow(geneNum),xaxt = "n",outline = FALSE)    #Draw boxplot
+text(1:geneNum, par("usr")[3]-0.25, srt=45, adj=1, labels=colnames(data), xpd=TRUE, cex=0.8)  #x-axis scale
+dev.off()
+
+
