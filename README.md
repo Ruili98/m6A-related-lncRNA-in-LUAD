@@ -1,4 +1,4 @@
-# m6A-related-lncRNA-in-LUAD
+# Prognostic value of genomic instability of m6A-related lncRNAs in lung adenocarcinoma
 M6ALncRNA.cor.txt, GILnc.diff.txt, and m6A-GILnc.cluster.txt for Figure 2a,2b,2c
 
 m6A-GILnc.clusterGene.txt and m6a-GILnc.clusterMut.txt for Figure 3
