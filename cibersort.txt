@@ -1,0 +1,37 @@
+#install.packages('e1071')
+
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("preprocessCore")
+
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+#BiocManager::install("limma")
+
+
+library("limma")          #Cite package
+expFile="symbol.txt"      #Read the expression data
+setwd("C:\\Users\\CIBERSORT")      #set dir
+
+#Read the input file and sort the input file
+rt=read.table(expFile, header=T, sep="\t", check.names=F)
+rt=as.matrix(rt)
+rownames(rt)=rt[,1]
+exp=rt[,2:ncol(rt)]
+dimnames=list(rownames(exp),colnames(exp))
+data=matrix(as.numeric(as.matrix(exp)),nrow=nrow(exp),dimnames=dimnames)
+data=avereps(data)
+data=data[rowMeans(data)>0,]
+
+#Data conversion
+v=voom(data, plot=F, save.plot=F)
+out=v$E
+out=rbind(ID=colnames(out), out)
+write.table(out,file="uniq.symbol.txt",sep="\t",quote=F,col.names=F)        #Output file
+
+#Run CIBERSORT to get the result of immune cell content
+source("irgICI22.CIBERSORT.R")
+results=CIBERSORT("ref.txt", "uniq.symbol.txt", perm=1000, QN=TRUE)
+
+
+
